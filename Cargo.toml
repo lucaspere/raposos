@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "services/core-ledger",
+    "services/chain-indexer",
+]
+resolver = "2"

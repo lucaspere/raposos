@@ -1,0 +1,10 @@
+DROP TABLE tax_records CASCADE;
+DROP TYPE tax_event_type;
+DROP TABLE ledger_transactions CASCADE;
+DROP TYPE ledger_tx_status;
+DROP TYPE ledger_tx_type;
+DROP TABLE invoices CASCADE;
+DROP TYPE invoice_status;
+DROP TABLE wallets CASCADE;
+DROP TABLE contractors CASCADE;
+DROP TABLE companies CASCADE;

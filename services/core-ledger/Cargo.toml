@@ -1,0 +1,22 @@
+[package]
+name = "core-ledger"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tonic = "0.11"
+prost = "0.12"
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "rust_decimal", "chrono", "macros"] }
+rust_decimal = { version = "1.32", features = ["db-postgres"] }
+lapin = "2.3"
+uuid = { version = "1.4", features = ["v4", "serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dotenvy = "0.15"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+futures-util = "0.3"
+
+[build-dependencies]
+tonic-build = "0.11"
