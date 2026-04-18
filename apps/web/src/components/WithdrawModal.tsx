@@ -7,6 +7,11 @@ interface WithdrawModalProps {
   onClose: () => void;
 }
 
+interface WithdrawResponse {
+  success?: boolean;
+  error?: string;
+}
+
 export default function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
   const [contractorId, setContractorId] = useState("");
   const [amount, setAmount] = useState("");
@@ -24,10 +29,10 @@ export default function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000"}/withdrawals/pix`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contractorId, amount: Number(amount) }),
+        body: JSON.stringify({ contractor_id: contractorId, amount: Number(amount) }),
       });
 
-      const data = await res.json();
+      const data = (await res.json()) as WithdrawResponse;
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Withdrawal failed");
       }
@@ -39,9 +44,9 @@ export default function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
         setContractorId("");
         setAmount("");
       }, 2000);
-    } catch (err: any) {
+    } catch (error: unknown) {
       setStatus("error");
-      setErrorMessage(err.message);
+      setErrorMessage(error instanceof Error ? error.message : "Withdrawal failed");
     }
   };
 
@@ -120,7 +125,7 @@ export default function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
                 className="flex-1 px-4 py-3 bg-primary text-on-primary rounded-lg font-bold text-sm hover:bg-primary-container transition-colors shadow-lg disabled:opacity-50 flex justify-center items-center gap-2"
               >
                 {status === "loading" ? "Processing..." : "Confirm PIX"}
-                {!status && <span className="material-symbols-outlined text-[1.2rem]">arrow_forward</span>}
+                {status === "idle" && <span className="material-symbols-outlined text-[1.2rem]">arrow_forward</span>}
               </button>
             </div>
           </form>

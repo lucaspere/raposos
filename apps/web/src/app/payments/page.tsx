@@ -2,6 +2,12 @@
 
 import { useState } from "react";
 
+interface InvoiceResponse {
+  success?: boolean;
+  invoice_id?: string;
+  error?: string;
+}
+
 export default function PaymentsPage() {
   const [companyId, setCompanyId] = useState("");
   const [contractorId, setContractorId] = useState("");
@@ -26,16 +32,16 @@ export default function PaymentsPage() {
         }),
       });
 
-      const data = await res.json();
+      const data = (await res.json()) as InvoiceResponse;
       if (!res.ok || !data.success) throw new Error(data.error || "Failed to create invoice");
 
       setStatus("success");
       setMessage(`Invoice created with ID: ${data.invoice_id}`);
       setContractorId("");
       setAmount("");
-    } catch (err: any) {
+    } catch (error: unknown) {
       setStatus("error");
-      setMessage(err.message);
+      setMessage(error instanceof Error ? error.message : "Failed to create invoice");
     }
   };
 

@@ -2,6 +2,12 @@
 
 import { useState } from "react";
 
+interface ContractorResponse {
+  success?: boolean;
+  contractor_id?: string;
+  error?: string;
+}
+
 export default function ContractorsPage() {
   const [fullName, setFullName] = useState("");
   const [taxId, setTaxId] = useState("");
@@ -21,7 +27,7 @@ export default function ContractorsPage() {
         body: JSON.stringify({ full_name: fullName, br_tax_id: taxId, pix_key: pixKey }),
       });
 
-      const data = await res.json();
+      const data = (await res.json()) as ContractorResponse;
       if (!res.ok || !data.success) throw new Error(data.error || "Failed to create contractor");
 
       setStatus("success");
@@ -29,9 +35,9 @@ export default function ContractorsPage() {
       setFullName("");
       setTaxId("");
       setPixKey("");
-    } catch (err: any) {
+    } catch (error: unknown) {
       setStatus("error");
-      setMessage(err.message);
+      setMessage(error instanceof Error ? error.message : "Failed to create contractor");
     }
   };
 
@@ -102,7 +108,7 @@ export default function ContractorsPage() {
             className="w-full px-4 py-3 bg-primary text-on-primary rounded-lg font-bold text-sm hover:bg-primary-container transition-colors shadow-lg disabled:opacity-50 flex justify-center items-center gap-2 mt-4"
           >
             {status === "loading" ? "Processing..." : "Register Contractor"}
-            {!status && <span className="material-symbols-outlined text-[1.2rem]">person_add</span>}
+            {status === "idle" && <span className="material-symbols-outlined text-[1.2rem]">person_add</span>}
           </button>
         </form>
       </div>
