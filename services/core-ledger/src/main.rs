@@ -3,8 +3,8 @@ use sqlx::PgPool;
 use std::env;
 use tonic::transport::Server;
 
-pub mod grpc;
 pub mod amqp;
+pub mod grpc;
 
 use grpc::pb::ledger_service_server::LedgerServiceServer;
 use grpc::MyLedgerService;
@@ -13,7 +13,7 @@ use grpc::MyLedgerService;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
     tracing_subscriber::fmt::init();
-    
+
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let pool = PgPool::connect(&db_url).await?;
 
@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ledger_service = MyLedgerService { pool: pool.clone() };
 
     println!("Starting Core Ledger on {}", addr);
-    
+
     // Spawn AMQP consumer
     let pool_clone = pool.clone();
     tokio::spawn(async move {
