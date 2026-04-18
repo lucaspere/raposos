@@ -1,8 +1,34 @@
 #!/bin/bash
 set -e
 
-fuser -k 3000/tcp || true
-fuser -k 50051/tcp || true
+terminate_port() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -ti tcp:"$port" | xargs kill >/dev/null 2>&1 || true
+  elif command -v fuser >/dev/null 2>&1; then
+    fuser -k "${port}/tcp" || true
+  fi
+}
+
+terminate_port 3000
+terminate_port 50051
+
+wait_for_port() {
+  local port="$1"
+  local retries=30
+
+  while [ $retries -gt 0 ]; do
+    if lsof -i tcp:"$port" >/dev/null 2>&1; then
+      return 0
+    fi
+
+    sleep 1
+    retries=$((retries - 1))
+  done
+
+  echo "Timed out waiting for port $port"
+  return 1
+}
 
 echo "Starting infrastructure..."
 docker compose up -d postgres rabbitmq
@@ -13,14 +39,15 @@ docker compose exec -T postgres psql -U raposos -d ledger -c "DROP SCHEMA public
 docker compose exec -T postgres psql -U raposos -d ledger < packages/database/migrations/20240101000000_init.up.sql
 
 echo "Starting core-ledger..."
-cargo run --manifest-path services/core-ledger/Cargo.toml > /dev/null 2>&1 &
+DATABASE_URL=postgres://raposos:password@localhost:5432/ledger RUSTC_WRAPPER= cargo run --manifest-path services/core-ledger/Cargo.toml > /tmp/raposos-core-ledger.log 2>&1 &
 CORE_PID=$!
 
 echo "Starting api-gateway..."
-npm run dev > /dev/null 2>&1 &
+DATABASE_URL=postgres://raposos:password@localhost:5432/ledger npm --workspace api-gateway run dev > /tmp/raposos-api-gateway.log 2>&1 &
 DEV_PID=$!
 
-sleep 10 # wait for compilation and startup
+wait_for_port 50051
+wait_for_port 3000
 
 echo "Creating company..."
 COMPANY_ID=$(curl -s -X POST http://localhost:3000/companies -H "Content-Type: application/json" -d '{"legal_name":"Tech Corp", "tax_id":"12345678000199"}' | grep -o 'company_id":"[^"]*' | cut -d'"' -f3)
@@ -35,6 +62,9 @@ WALLET_ID=$(curl -s -X POST http://localhost:3000/wallets -H "Content-Type: appl
 echo "Wallet ID: $WALLET_ID"
 
 echo "Publishing mock deposit event to RabbitMQ..."
+docker compose exec -T rabbitmq rabbitmqadmin -u raposos -p password publish exchange=amq.default routing_key=deposit_confirmed payload="{\"contractor_id\":\"$CONTRACTOR_ID\",\"amount\":\"100.00\",\"tx_hash\":\"0xabcd1234\"}"
+
+echo "Publishing duplicate deposit event to validate idempotency..."
 docker compose exec -T rabbitmq rabbitmqadmin -u raposos -p password publish exchange=amq.default routing_key=deposit_confirmed payload="{\"contractor_id\":\"$CONTRACTOR_ID\",\"amount\":\"100.00\",\"tx_hash\":\"0xabcd1234\"}"
 
 sleep 3 # wait for consumer
@@ -53,7 +83,7 @@ echo "Checking final balance..."
 curl -s http://localhost:3000/contractors/$CONTRACTOR_ID/balance
 echo ""
 
-v=$(docker compose exec -T postgres psql -U raposos -d ledger -c "SELECT * FROM tax_records;")
+v=$(docker compose exec -T postgres psql -U raposos -d ledger -c "SELECT tx_type, status, amount, related_transaction_id, tx_hash FROM ledger_transactions ORDER BY created_at; SELECT event_type, token_amount, total_brl_value, capital_gain FROM tax_records ORDER BY event_type;")
 echo "$v"
 
 echo "Cleaning up..."
