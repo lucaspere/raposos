@@ -7,7 +7,6 @@ import type { ProtoGrpcType } from '@raposos/proto/dist/ledger';
 const PROTO_PATH = path.join(__dirname, '../../../packages/proto/ledger.proto');
 
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
-    keepCase: true,
     longs: String,
     enums: String,
     defaults: true,
