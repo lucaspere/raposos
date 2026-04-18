@@ -28,19 +28,30 @@ CREATE TABLE invoices (
     status invoice_status NOT NULL DEFAULT 'PENDING'
 );
 
-CREATE TYPE ledger_tx_type AS ENUM ('DEPOSIT', 'CRYPTO_WITHDRAWAL', 'FIAT_OFFRAMP');
-CREATE TYPE ledger_tx_status AS ENUM ('PENDING', 'COMPLETED', 'FAILED');
+CREATE TYPE ledger_tx_type AS ENUM (
+    'DEPOSIT',
+    'CRYPTO_WITHDRAWAL',
+    'FIAT_OFFRAMP_RESERVATION',
+    'FIAT_OFFRAMP_SETTLEMENT',
+    'FIAT_OFFRAMP_REVERSAL'
+);
+CREATE TYPE ledger_tx_status AS ENUM ('RESERVED', 'COMPLETED', 'FAILED');
 
 CREATE TABLE ledger_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     contractor_id UUID NOT NULL REFERENCES contractors(id),
     invoice_id UUID REFERENCES invoices(id),
+    related_transaction_id UUID REFERENCES ledger_transactions(id),
     tx_type ledger_tx_type NOT NULL,
     amount DECIMAL(36,18) NOT NULL,
-    tx_hash VARCHAR(255),
-    status ledger_tx_status NOT NULL DEFAULT 'PENDING',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    tx_hash VARCHAR(255) UNIQUE,
+    status ledger_tx_status NOT NULL DEFAULT 'COMPLETED',
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX idx_wallets_address_lower ON wallets (LOWER(address));
+CREATE INDEX idx_ledger_transactions_contractor_created_at ON ledger_transactions (contractor_id, created_at);
+CREATE INDEX idx_ledger_transactions_related_transaction_id ON ledger_transactions (related_transaction_id);
 
 CREATE TYPE tax_event_type AS ENUM ('ACQUISITION', 'DISPOSAL');
 

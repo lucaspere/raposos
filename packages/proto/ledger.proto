@@ -3,28 +3,28 @@ syntax = "proto3";
 package ledger;
 
 service LedgerService {
-  rpc LockFunds (LockFundsRequest) returns (LockFundsResponse);
-  rpc ConfirmOfframp (ConfirmOfframpRequest) returns (ConfirmOfframpResponse);
+  rpc ReserveOfframp (ReserveOfframpRequest) returns (ReserveOfframpResponse);
+  rpc FinalizeOfframp (FinalizeOfframpRequest) returns (FinalizeOfframpResponse);
 }
 
-message LockFundsRequest {
+message ReserveOfframpRequest {
   string contractor_id = 1;
   string amount = 2; // Decimal as string to preserve precision
 }
 
-message LockFundsResponse {
+message ReserveOfframpResponse {
   bool success = 1;
   string transaction_id = 2; // UUID as string
   string error_message = 3;
 }
 
-message ConfirmOfframpRequest {
+message FinalizeOfframpRequest {
   string transaction_id = 1;
-  bool success = 2; // If false, the lock is released (FAILED)
+  bool success = 2; // If false, the reservation is released via a reversal event.
   string tx_hash = 3; // PIX transaction ID / hash
 }
 
-message ConfirmOfframpResponse {
+message FinalizeOfframpResponse {
   bool success = 1;
   string error_message = 2;
 }
