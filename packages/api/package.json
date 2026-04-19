@@ -1,0 +1,21 @@
+{
+  "name": "@raposos/api",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@raposos/proto": "*",
+    "@trpc/server": "^11.8.1",
+    "pg": "^8.20.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.0",
+    "typescript": "^6.0.3"
+  }
+}

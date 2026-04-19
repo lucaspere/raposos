@@ -3,7 +3,11 @@
 import { useState } from "react";
 import WithdrawModal from "./WithdrawModal";
 
-export default function DashboardActions() {
+interface DashboardActionsProps {
+  defaultContractorId?: string;
+}
+
+export default function DashboardActions({ defaultContractorId }: DashboardActionsProps) {
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
 
   return (
@@ -22,9 +26,10 @@ export default function DashboardActions() {
         </button>
       </div>
 
-      <WithdrawModal 
-        isOpen={isWithdrawModalOpen} 
-        onClose={() => setIsWithdrawModalOpen(false)} 
+      <WithdrawModal
+        isOpen={isWithdrawModalOpen}
+        onClose={() => setIsWithdrawModalOpen(false)}
+        defaultContractorId={defaultContractorId}
       />
     </>
   );

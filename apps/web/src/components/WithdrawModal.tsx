@@ -1,22 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { TRPCClientError } from "@trpc/client";
+import { useEffect, useRef, useState } from "react";
+import { trpc } from "@/trpc/react";
 
 interface WithdrawModalProps {
   isOpen: boolean;
   onClose: () => void;
+  defaultContractorId?: string;
 }
 
-interface WithdrawResponse {
-  success?: boolean;
-  error?: string;
-}
-
-export default function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
+export default function WithdrawModal({ isOpen, onClose, defaultContractorId }: WithdrawModalProps) {
   const [contractorId, setContractorId] = useState("");
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const pixOfframp = trpc.withdrawals.pixOfframp.useMutation();
+  const seededDefaultForOpen = useRef(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      seededDefaultForOpen.current = false;
+      return;
+    }
+    if (defaultContractorId && !seededDefaultForOpen.current) {
+      setContractorId(defaultContractorId);
+      seededDefaultForOpen.current = true;
+    }
+  }, [isOpen, defaultContractorId]);
 
   if (!isOpen) return null;
 
@@ -26,16 +37,10 @@ export default function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
     setErrorMessage("");
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000"}/withdrawals/pix`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contractor_id: contractorId, amount: Number(amount) }),
+      await pixOfframp.mutateAsync({
+        contractorId,
+        amount: Number(amount),
       });
-
-      const data = (await res.json()) as WithdrawResponse;
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Withdrawal failed");
-      }
 
       setStatus("success");
       setTimeout(() => {
@@ -46,7 +51,13 @@ export default function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
       }, 2000);
     } catch (error: unknown) {
       setStatus("error");
-      setErrorMessage(error instanceof Error ? error.message : "Withdrawal failed");
+      setErrorMessage(
+        error instanceof TRPCClientError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Withdrawal failed",
+      );
     }
   };
 

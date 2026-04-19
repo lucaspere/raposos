@@ -10,7 +10,7 @@
   "devDependencies": {
     "turbo": "latest"
   },
-  "packageManager": "npm@11.6.2",
+  "packageManager": "npm@11.12.1",
   "workspaces": [
     "apps/*",
     "packages/*"

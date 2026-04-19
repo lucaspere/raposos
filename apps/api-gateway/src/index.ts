@@ -1,5 +1,6 @@
-import type { FinalizeOfframpResponse__Output } from '@raposos/proto/dist/ledger/FinalizeOfframpResponse';
-import type { ReserveOfframpResponse__Output } from '@raposos/proto/dist/ledger/ReserveOfframpResponse';
+import { appRouter } from '@raposos/api';
+import { TRPCError } from '@trpc/server';
+import * as trpcExpress from '@trpc/server/adapters/express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
@@ -20,31 +21,6 @@ const dbClient = new Client({
 
 dbClient.connect().catch(console.error);
 
-const contractorBalanceSql = `
-    WITH settled AS (
-        SELECT COALESCE(SUM(amount), 0) AS settled_balance
-        FROM ledger_transactions
-        WHERE contractor_id = $1 AND status = 'COMPLETED'
-    ),
-    active_reservations AS (
-        SELECT COALESCE(SUM(reservation.amount), 0) AS active_reserved_amount
-        FROM ledger_transactions reservation
-        WHERE reservation.contractor_id = $1
-            AND reservation.tx_type = 'FIAT_OFFRAMP_RESERVATION'
-            AND reservation.status = 'RESERVED'
-            AND NOT EXISTS (
-                SELECT 1
-                FROM ledger_transactions resolution
-                WHERE resolution.related_transaction_id = reservation.id
-                    AND resolution.tx_type IN ('FIAT_OFFRAMP_SETTLEMENT', 'FIAT_OFFRAMP_REVERSAL')
-            )
-    )
-    SELECT
-        settled.settled_balance,
-        settled.settled_balance + active_reservations.active_reserved_amount AS available_balance
-    FROM settled, active_reservations
-`;
-
 function parseError(error: unknown): string {
     if (error instanceof Error) {
         return error.message;
@@ -53,86 +29,127 @@ function parseError(error: unknown): string {
     return 'Unexpected error';
 }
 
-app.post('/companies', async (req, res) => {
-    const { legal_name, tax_id } = req.body;
-    try {
-        const result = await dbClient.query(
-            `
-            INSERT INTO companies (legal_name, tax_id)
-            VALUES ($1, $2) RETURNING id
-        `,
-            [legal_name, tax_id],
-        );
+function apiContext() {
+    return { db: dbClient, ledger: ledgerClient };
+}
 
-        res.json({ success: true, company_id: result.rows[0].id });
+function trpcHttpStatus(code: TRPCError['code']): number {
+    switch (code) {
+        case 'NOT_FOUND':
+            return 404;
+        case 'BAD_REQUEST':
+            return 400;
+        case 'UNAUTHORIZED':
+            return 401;
+        case 'FORBIDDEN':
+            return 403;
+        default:
+            return 500;
+    }
+}
+
+app.use(
+    '/trpc',
+    trpcExpress.createExpressMiddleware({
+        router: appRouter,
+        createContext: () => apiContext(),
+    }),
+);
+
+app.post('/companies', async (req, res) => {
+    const caller = appRouter.createCaller(apiContext());
+    try {
+        const out = await caller.companies.create({
+            legalName: req.body.legal_name,
+            taxId: req.body.tax_id,
+        });
+        res.json({ success: true, company_id: out.companyId });
     } catch (error: unknown) {
+        if (error instanceof TRPCError) {
+            return res.status(trpcHttpStatus(error.code)).json({ error: error.message });
+        }
         res.status(500).json({ error: parseError(error) });
     }
 });
 
 app.post('/contractors', async (req, res) => {
-    const { full_name, br_tax_id, pix_key } = req.body;
+    const caller = appRouter.createCaller(apiContext());
     try {
-        const result = await dbClient.query(
-            `
-            INSERT INTO contractors (full_name, br_tax_id, pix_key)
-            VALUES ($1, $2, $3) RETURNING id
-        `,
-            [full_name, br_tax_id, pix_key],
-        );
-
-        res.json({ success: true, contractor_id: result.rows[0].id });
+        const out = await caller.contractors.create({
+            fullName: req.body.full_name,
+            brTaxId: req.body.br_tax_id,
+            pixKey: req.body.pix_key,
+        });
+        res.json({ success: true, contractor_id: out.contractorId });
     } catch (error: unknown) {
+        if (error instanceof TRPCError) {
+            return res.status(trpcHttpStatus(error.code)).json({ error: error.message });
+        }
         res.status(500).json({ error: parseError(error) });
     }
 });
 
 app.post('/wallets', async (req, res) => {
-    const { owner_id, address } = req.body;
+    const caller = appRouter.createCaller(apiContext());
     try {
-        const result = await dbClient.query(
-            `
-            INSERT INTO wallets (owner_id, address)
-            VALUES ($1, $2) RETURNING id
-        `,
-            [owner_id, address],
-        );
-
-        res.json({ success: true, wallet_id: result.rows[0].id });
+        const out = await caller.wallets.create({
+            ownerId: req.body.owner_id,
+            address: req.body.address,
+        });
+        res.json({ success: true, wallet_id: out.walletId });
     } catch (error: unknown) {
+        if (error instanceof TRPCError) {
+            return res.status(trpcHttpStatus(error.code)).json({ error: error.message });
+        }
+        res.status(500).json({ error: parseError(error) });
+    }
+});
+
+app.get('/contractors/:id', async (req, res) => {
+    const caller = appRouter.createCaller(apiContext());
+    try {
+        const out = await caller.contractors.getById({ id: req.params.id });
+        res.json({ success: true, contractor: out.contractor });
+    } catch (error: unknown) {
+        if (error instanceof TRPCError) {
+            return res.status(trpcHttpStatus(error.code)).json({ error: error.message });
+        }
         res.status(500).json({ error: parseError(error) });
     }
 });
 
 app.get('/contractors/:id/balance', async (req, res) => {
-    const contractor_id = req.params.id;
+    const caller = appRouter.createCaller(apiContext());
     try {
-        const result = await dbClient.query(contractorBalanceSql, [contractor_id]);
-
+        const out = await caller.contractors.getBalance({ id: req.params.id });
         res.json({
             success: true,
-            balance: result.rows[0].available_balance,
-            settled_balance: result.rows[0].settled_balance,
-            available_balance: result.rows[0].available_balance,
+            balance: out.availableBalance,
+            settled_balance: out.settledBalance,
+            available_balance: out.availableBalance,
         });
     } catch (error: unknown) {
+        if (error instanceof TRPCError) {
+            return res.status(trpcHttpStatus(error.code)).json({ error: error.message });
+        }
         res.status(500).json({ error: parseError(error) });
     }
 });
 
 app.post('/invoices', async (req, res) => {
-    const { company_id, contractor_id, amount_due, asset } = req.body;
+    const caller = appRouter.createCaller(apiContext());
     try {
-        const result = await dbClient.query(
-            `
-            INSERT INTO invoices (company_id, contractor_id, amount_due, asset, status)
-            VALUES ($1, $2, $3, $4, 'PENDING') RETURNING id
-        `,
-            [company_id, contractor_id, amount_due, asset],
-        );
-
-        res.json({ success: true, invoice_id: result.rows[0].id });
+        const out = await caller.invoices.create({
+            companyId: req.body.company_id,
+            contractorId: req.body.contractor_id,
+            amountDue: req.body.amount_due,
+            asset: req.body.asset,
+        });
+        res.json({ success: true, invoice_id: out.invoiceId });
     } catch (error: unknown) {
+        if (error instanceof TRPCError) {
+            return res.status(trpcHttpStatus(error.code)).json({ error: error.message });
+        }
         res.status(500).json({ error: parseError(error) });
     }
 });
@@ -151,64 +168,23 @@ app.post('/withdrawals/pix', async (req, res) => {
         return res.status(400).json({ error: 'amount must be a positive number' });
     }
 
-    ledgerClient.ReserveOfframp(
-        { contractorId: contractor_id, amount: amount.toString() },
-        (
-            error: Error | null,
-            response: ReserveOfframpResponse__Output | undefined,
-        ) => {
-            if (error) {
-                return res.status(500).json({ error: error.message });
-            }
-
-            if (!response) {
-                return res.status(500).json({ error: 'Missing reserve response' });
-            }
-
-            if (!response.success) {
-                return res.status(400).json({ error: response.errorMessage || 'Reserve failed' });
-            }
-
-            const transactionId = response.transactionId;
-
-            if (!transactionId) {
-                return res.status(500).json({ error: 'Missing reservation id' });
-            }
-
-            setTimeout(() => {
-                console.log('Mock BaaS PIX Transfer Complete, settling ledger...');
-                ledgerClient.FinalizeOfframp(
-                    {
-                        transactionId,
-                        success: true,
-                        txHash: `pix_mock_${transactionId}`,
-                    },
-                    (
-                        finalizeError: Error | null,
-                        finalizeResponse: FinalizeOfframpResponse__Output | undefined,
-                    ) => {
-                        if (finalizeError) {
-                            console.error('Finalize offramp failed', finalizeError);
-                            return;
-                        }
-
-                        if (!finalizeResponse || !finalizeResponse.success) {
-                            console.error(
-                                'Finalize offramp failed',
-                                finalizeResponse?.errorMessage || 'Missing finalize response',
-                            );
-                        }
-                    },
-                );
-            }, 1000);
-
-            res.json({
-                success: true,
-                message: 'Offramp initiated',
-                transaction_id: transactionId,
-            });
-        },
-    );
+    const caller = appRouter.createCaller(apiContext());
+    try {
+        const out = await caller.withdrawals.pixOfframp({
+            contractorId: contractor_id,
+            amount,
+        });
+        res.json({
+            success: true,
+            message: out.message,
+            transaction_id: out.transactionId,
+        });
+    } catch (error: unknown) {
+        if (error instanceof TRPCError) {
+            return res.status(trpcHttpStatus(error.code)).json({ error: error.message });
+        }
+        res.status(500).json({ error: parseError(error) });
+    }
 });
 
 const PORT = 3000;

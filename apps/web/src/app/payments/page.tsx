@@ -1,12 +1,8 @@
 "use client";
 
+import { TRPCClientError } from "@trpc/client";
 import { useState } from "react";
-
-interface InvoiceResponse {
-  success?: boolean;
-  invoice_id?: string;
-  error?: string;
-}
+import { trpc } from "@/trpc/react";
 
 export default function PaymentsPage() {
   const [companyId, setCompanyId] = useState("");
@@ -14,6 +10,7 @@ export default function PaymentsPage() {
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
+  const createInvoice = trpc.invoices.create.useMutation();
 
   const handleIssueInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,27 +18,26 @@ export default function PaymentsPage() {
     setMessage("");
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000"}/invoices`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          company_id: companyId, 
-          contractor_id: contractorId, 
-          amount_due: Number(amount),
-          asset: "USDC" 
-        }),
+      const { invoiceId } = await createInvoice.mutateAsync({
+        companyId,
+        contractorId,
+        amountDue: Number(amount),
+        asset: "USDC",
       });
 
-      const data = (await res.json()) as InvoiceResponse;
-      if (!res.ok || !data.success) throw new Error(data.error || "Failed to create invoice");
-
       setStatus("success");
-      setMessage(`Invoice created with ID: ${data.invoice_id}`);
+      setMessage(`Invoice created with ID: ${invoiceId}`);
       setContractorId("");
       setAmount("");
     } catch (error: unknown) {
       setStatus("error");
-      setMessage(error instanceof Error ? error.message : "Failed to create invoice");
+      const msg =
+        error instanceof TRPCClientError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Failed to create invoice";
+      setMessage(msg);
     }
   };
 

@@ -1,74 +1,154 @@
+"use client";
+
+import { useOnboarding } from "@/hooks/useOnboarding";
+import { formatDecimal } from "@/lib/formatAmount";
+import { trpc } from "@/trpc/react";
+import { skipToken } from "@tanstack/react-query";
+import Link from "next/link";
+
+function shortId(id: string) {
+  return id.length > 12 ? `${id.slice(0, 8)}…` : id;
+}
+
 export default function InvoicesPage() {
+  const { profile, isLoaded } = useOnboarding();
+  const contractorId = profile?.id;
+
+  const listQuery = trpc.invoices.listForContractor.useQuery(
+    contractorId ? { contractorId } : skipToken,
+  );
+  const statsQuery = trpc.invoices.statsForContractor.useQuery(
+    contractorId ? { contractorId } : skipToken,
+  );
+
+  if (!isLoaded) {
+    return (
+      <div className="flex h-64 max-w-5xl items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+      </div>
+    );
+  }
+
+  if (!contractorId) {
+    return (
+      <div className="mx-auto max-w-xl rounded-3xl border border-outline-variant/10 bg-surface-container-low p-10 text-center">
+        <h1 className="font-headline text-2xl font-bold text-on-background">No contractor profile</h1>
+        <p className="mt-2 text-sm text-zinc-400">Onboard first to see your invoices.</p>
+        <Link href="/onboarding" className="mt-6 inline-block text-sm font-bold text-primary hover:underline">
+          Go to onboarding
+        </Link>
+      </div>
+    );
+  }
+
+  const invoices = listQuery.data?.invoices ?? [];
+  const stats = statsQuery.data;
+
   return (
-    <div className="flex flex-col gap-12 max-w-5xl">
+    <div className="flex max-w-5xl flex-col gap-12">
       <div className="space-y-2">
-        <h1 className="text-3xl font-headline font-bold text-on-background tracking-tight">Invoices</h1>
-        <p className="text-zinc-400 text-sm">Manage outgoing contractor payments and historical billing records through the immutable ledger.</p>
+        <h1 className="font-headline text-3xl font-bold tracking-tight text-on-background">Invoices</h1>
+        <p className="text-sm text-zinc-400">
+          Contractor invoices from the ledger database (scoped to your profile).
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-surface-container-low p-5 rounded-2xl border border-outline-variant/5">
-          <p className="text-[0.65rem] uppercase tracking-widest text-zinc-500 font-bold mb-2">Total Outstanding</p>
-          <p className="text-2xl font-mono font-bold text-zinc-100">14,290.50 USDC</p>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="rounded-2xl border border-outline-variant/5 bg-surface-container-low p-5">
+          <p className="mb-2 text-[0.65rem] font-bold uppercase tracking-widest text-zinc-500">Total outstanding</p>
+          {statsQuery.isLoading ? (
+            <div className="h-8 w-32 animate-pulse rounded bg-surface-container-high" />
+          ) : (
+            <p className="font-mono text-2xl font-bold text-zinc-100">
+              {formatDecimal(stats?.outstanding)} USDC
+            </p>
+          )}
         </div>
-        <div className="bg-surface-container-low p-5 rounded-2xl border border-outline-variant/5">
-          <p className="text-[0.65rem] uppercase tracking-widest text-zinc-500 font-bold mb-2">Awaiting Settlement</p>
-          <p className="text-2xl font-mono font-bold text-primary">4,102.00 USDC</p>
+        <div className="rounded-2xl border border-outline-variant/5 bg-surface-container-low p-5">
+          <p className="mb-2 text-[0.65rem] font-bold uppercase tracking-widest text-zinc-500">
+            Awaiting settlement
+          </p>
+          {statsQuery.isLoading ? (
+            <div className="h-8 w-32 animate-pulse rounded bg-surface-container-high" />
+          ) : (
+            <p className="font-mono text-2xl font-bold text-primary">
+              {formatDecimal(stats?.awaitingSettlement)} USDC
+            </p>
+          )}
         </div>
-        <div className="bg-surface-container-low p-5 rounded-2xl border border-outline-variant/5">
-          <p className="text-[0.65rem] uppercase tracking-widest text-zinc-500 font-bold mb-2">Next Payout</p>
-          <p className="text-lg font-bold text-zinc-100 mt-1">Oct 24, 2026</p>
+        <div className="rounded-2xl border border-outline-variant/5 bg-surface-container-low p-5">
+          <p className="mb-2 text-[0.65rem] font-bold uppercase tracking-widest text-zinc-500">Invoices</p>
+          {statsQuery.isLoading ? (
+            <div className="h-8 w-16 animate-pulse rounded bg-surface-container-high" />
+          ) : (
+            <p className="text-lg font-bold text-zinc-100">{stats?.invoiceCount ?? 0}</p>
+          )}
         </div>
-        <div className="bg-surface-container-low p-5 rounded-2xl border border-outline-variant/5">
-          <p className="text-[0.65rem] uppercase tracking-widest text-zinc-500 font-bold mb-2">Contractors Paid</p>
-          <p className="text-lg font-bold text-zinc-100 mt-1">12</p>
+        <div className="rounded-2xl border border-outline-variant/5 bg-surface-container-low p-5">
+          <p className="mb-2 text-[0.65rem] font-bold uppercase tracking-widest text-zinc-500">Settled</p>
+          {statsQuery.isLoading ? (
+            <div className="h-8 w-16 animate-pulse rounded bg-surface-container-high" />
+          ) : (
+            <p className="text-lg font-bold text-zinc-100">{stats?.settledCount ?? 0}</p>
+          )}
         </div>
       </div>
 
-      <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 overflow-hidden">
-        <div className="px-6 py-4 border-b border-outline-variant/10 flex justify-between items-center bg-surface-container-low/50">
-          <span className="text-[0.7rem] uppercase tracking-widest text-zinc-500 font-bold">Showing 4 Invoices</span>
-          <button className="text-primary text-sm font-semibold hover:underline">Download CSV</button>
+      <div className="overflow-hidden rounded-2xl border border-outline-variant/10 bg-surface-container-lowest">
+        <div className="flex items-center justify-between border-b border-outline-variant/10 bg-surface-container-low/50 px-6 py-4">
+          <span className="text-[0.7rem] font-bold uppercase tracking-widest text-zinc-500">
+            {listQuery.isLoading ? "Loading…" : `Showing ${invoices.length} invoice(s)`}
+          </span>
         </div>
-        
+
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-surface-container-lowest text-zinc-500 text-[0.65rem] uppercase tracking-widest">
-              <tr>
-                <th className="px-6 py-4 font-bold">Invoice ID</th>
-                <th className="px-6 py-4 font-bold">Contractor</th>
-                <th className="px-6 py-4 font-bold">Date Issued</th>
-                <th className="px-6 py-4 font-bold">Status</th>
-                <th className="px-6 py-4 font-bold text-right">Amount Due</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/5">
-              {[
-                { id: "INV-2026-100", name: "Jane Smith", date: "Oct 20, 2026", status: "PENDING", amount: "3,200.00" },
-                { id: "INV-2026-101", name: "Alex Chen", date: "Oct 21, 2026", status: "FUNDED", amount: "2,850.00" },
-                { id: "INV-2026-102", name: "DevOps Agency", date: "Oct 15, 2026", status: "SETTLED", amount: "5,000.00" },
-                { id: "INV-2026-103", name: "Marketing LLC", date: "Oct 10, 2026", status: "SETTLED", amount: "3,240.50" }
-              ].map((inv, i) => (
-                <tr key={i} className="hover:bg-surface-container-high transition-colors cursor-pointer">
-                  <td className="px-6 py-4 font-mono text-zinc-300">{inv.id}</td>
-                  <td className="px-6 py-4 font-medium text-zinc-100">{inv.name}</td>
-                  <td className="px-6 py-4 text-zinc-400">{inv.date}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-wide rounded ${
-                      inv.status === 'SETTLED' ? 'bg-secondary/10 text-secondary' : 
-                      inv.status === 'FUNDED' ? 'bg-primary/10 text-primary' : 
-                      'bg-zinc-500/10 text-zinc-400'
-                    }`}>
-                      {inv.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right font-mono text-zinc-100">
-                    {inv.amount} <span className="text-[0.6rem] text-zinc-500">USDC</span>
-                  </td>
+          {listQuery.error ? (
+            <p className="p-6 text-sm text-error">{listQuery.error.message}</p>
+          ) : listQuery.isLoading ? (
+            <div className="flex justify-center py-16">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+            </div>
+          ) : invoices.length === 0 ? (
+            <p className="p-8 text-sm text-zinc-500">No invoices for this contractor.</p>
+          ) : (
+            <table className="w-full whitespace-nowrap text-left text-sm">
+              <thead className="bg-surface-container-lowest text-[0.65rem] font-bold uppercase tracking-widest text-zinc-500">
+                <tr>
+                  <th className="px-6 py-4 font-bold">Invoice ID</th>
+                  <th className="px-6 py-4 font-bold">Contractor</th>
+                  <th className="px-6 py-4 font-bold">Date issued</th>
+                  <th className="px-6 py-4 font-bold">Status</th>
+                  <th className="px-6 py-4 text-right font-bold">Amount due</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/5">
+                {invoices.map((inv) => (
+                  <tr key={String(inv.id)} className="transition-colors hover:bg-surface-container-high">
+                    <td className="px-6 py-4 font-mono text-zinc-300">{shortId(String(inv.id))}</td>
+                    <td className="px-6 py-4 font-medium text-zinc-100">{inv.contractor_full_name}</td>
+                    <td className="px-6 py-4 text-zinc-400">—</td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`rounded px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-wide ${
+                          inv.status === "SETTLED"
+                            ? "bg-secondary/10 text-secondary"
+                            : inv.status === "FUNDED"
+                              ? "bg-primary/10 text-primary"
+                              : "bg-zinc-500/10 text-zinc-400"
+                        }`}
+                      >
+                        {inv.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right font-mono text-zinc-100">
+                      {formatDecimal(inv.amount_due as string)}{" "}
+                      <span className="text-[0.6rem] text-zinc-500">{inv.asset}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>

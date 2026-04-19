@@ -61,6 +61,10 @@ echo "Creating wallet..."
 WALLET_ID=$(curl -s -X POST http://localhost:3000/wallets -H "Content-Type: application/json" -d "{\"owner_id\":\"$CONTRACTOR_ID\", \"address\":\"0x1111222233334444555566667777888899990000\"}" | grep -o 'wallet_id":"[^"]*' | cut -d'"' -f3)
 echo "Wallet ID: $WALLET_ID"
 
+echo "Testing GET /contractors/:id endpoint (Profile Fetch)..."
+curl -s http://localhost:3000/contractors/$CONTRACTOR_ID
+echo ""
+
 echo "Publishing mock deposit event to RabbitMQ..."
 docker compose exec -T rabbitmq rabbitmqadmin -u raposos -p password publish exchange=amq.default routing_key=deposit_confirmed payload="{\"contractor_id\":\"$CONTRACTOR_ID\",\"amount\":\"100.00\",\"tx_hash\":\"0xabcd1234\"}"
 

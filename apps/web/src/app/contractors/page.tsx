@@ -1,12 +1,8 @@
 "use client";
 
+import { TRPCClientError } from "@trpc/client";
 import { useState } from "react";
-
-interface ContractorResponse {
-  success?: boolean;
-  contractor_id?: string;
-  error?: string;
-}
+import { trpc } from "@/trpc/react";
 
 export default function ContractorsPage() {
   const [fullName, setFullName] = useState("");
@@ -14,6 +10,7 @@ export default function ContractorsPage() {
   const [pixKey, setPixKey] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
+  const createContractor = trpc.contractors.create.useMutation();
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,23 +18,26 @@ export default function ContractorsPage() {
     setMessage("");
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000"}/contractors`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: fullName, br_tax_id: taxId, pix_key: pixKey }),
+      const { contractorId } = await createContractor.mutateAsync({
+        fullName,
+        brTaxId: taxId,
+        pixKey,
       });
 
-      const data = (await res.json()) as ContractorResponse;
-      if (!res.ok || !data.success) throw new Error(data.error || "Failed to create contractor");
-
       setStatus("success");
-      setMessage(`Contractor created with ID: ${data.contractor_id}`);
+      setMessage(`Contractor created with ID: ${contractorId}`);
       setFullName("");
       setTaxId("");
       setPixKey("");
     } catch (error: unknown) {
       setStatus("error");
-      setMessage(error instanceof Error ? error.message : "Failed to create contractor");
+      const msg =
+        error instanceof TRPCClientError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Failed to create contractor";
+      setMessage(msg);
     }
   };
 
