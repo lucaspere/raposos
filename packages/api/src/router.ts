@@ -68,6 +68,28 @@ export const appRouter = router({
   }),
 
   contractors: router({
+    login: publicProcedure
+      .input(z.object({ brTaxId: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await ctx.db.query(
+          `SELECT c.id, c.full_name, c.pix_key, w.address as wallet_address 
+           FROM contractors c
+           LEFT JOIN wallets w ON w.owner_id = c.id
+           WHERE c.br_tax_id = $1 LIMIT 1`,
+          [input.brTaxId]
+        );
+        if (result.rows.length === 0) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Contractor not found with that CNPJ' });
+        }
+        const row = result.rows[0];
+        return {
+          contractorId: row.id as string,
+          fullName: row.full_name as string,
+          pixKey: row.pix_key as string,
+          walletAddress: (row.wallet_address as string) || '',
+        };
+      }),
+
     create: publicProcedure
       .input(
         z.object({
@@ -81,7 +103,18 @@ export const appRouter = router({
           `INSERT INTO contractors (full_name, br_tax_id, pix_key) VALUES ($1, $2, $3) RETURNING id`,
           [input.fullName, input.brTaxId, input.pixKey],
         );
-        return { contractorId: result.rows[0].id as string };
+        const contractorId = result.rows[0].id as string;
+        
+        let walletAddress: string | null = null;
+        if (ctx.createSmartWallet) {
+          walletAddress = await ctx.createSmartWallet(ctx.db, contractorId, input.fullName);
+          await ctx.db.query(
+            `INSERT INTO wallets (owner_id, address) VALUES ($1, $2)`,
+            [contractorId, walletAddress]
+          );
+        }
+
+        return { contractorId, walletAddress };
       }),
 
     getById: publicProcedure

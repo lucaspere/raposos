@@ -1,13 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { trpc } from '@/trpc/react';
 import { TRPCClientError } from '@trpc/client';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount } from 'wagmi';
 
-type Step = 'welcome' | 'details' | 'success';
+type Step = 'welcome' | 'details' | 'login' | 'success';
 
 function trpcMessage(err: unknown): string {
   if (err instanceof TRPCClientError) {
@@ -22,51 +20,70 @@ function trpcMessage(err: unknown): string {
 export default function OnboardingFlow() {
   const [step, setStep] = useState<Step>('welcome');
   const { saveProfile } = useOnboarding();
-  const { address, isConnected } = useAccount();
   const createContractor = trpc.contractors.create.useMutation();
-  const createWallet = trpc.wallets.create.useMutation();
+  const loginContractor = trpc.contractors.login.useMutation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [formData, setFormData] = useState({
     fullName: '',
     cnpj: '',
     pixKey: '',
   });
 
-  useEffect(() => {
-    if (step === 'welcome' && isConnected && address) {
-      setStep('details');
-    }
-  }, [isConnected, address, step]);
+  const [loginData, setLoginData] = useState({
+    cnpj: '',
+  });
 
   const handleDetailsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!address) return;
     
     setIsSubmitting(true);
     setError(null);
 
     try {
-      const { contractorId } = await createContractor.mutateAsync({
+      const { contractorId, walletAddress } = await createContractor.mutateAsync({
         fullName: formData.fullName,
         brTaxId: formData.cnpj,
         pixKey: formData.pixKey,
       });
 
-      await createWallet.mutateAsync({
-        ownerId: contractorId,
-        address,
+      // Save to local storage for session management
+      saveProfile({
+        id: contractorId,
+        walletAddress: walletAddress || '',
+        ...formData,
+      });
+
+      setStep('success');
+    } catch (err: unknown) {
+      setError(trpcMessage(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const { contractorId, fullName, pixKey, walletAddress } = await loginContractor.mutateAsync({
+        brTaxId: loginData.cnpj,
       });
 
       // Save to local storage for session management
       saveProfile({
         id: contractorId,
-        walletAddress: address,
-        ...formData,
+        walletAddress: walletAddress || '',
+        fullName,
+        cnpj: loginData.cnpj,
+        pixKey,
       });
 
-      setStep('success');
+      // Redirect happens inside saveProfile but just in case:
+      window.location.href = '/';
     } catch (err: unknown) {
       setError(trpcMessage(err));
     } finally {
@@ -117,13 +134,25 @@ export default function OnboardingFlow() {
               Welcome to <span className="text-[#adc6ff]">Immutable Ledger</span>
             </h1>
             <p className="text-[#c2c6d6] text-lg md:text-xl max-w-xl mb-12 font-medium">
-              Connect your Web3 wallet to start receiving stablecoin payouts with mathematical transparency.
+              Create your account to start receiving stablecoin payouts with mathematical transparency.
             </p>
 
             {/* Actions */}
             <div className="flex flex-col items-center gap-4 w-full max-w-sm">
-              <div className="mx-auto flex w-full max-w-sm justify-center">
-                <ConnectButton showBalance={false} />
+              <div className="mx-auto flex flex-col w-full max-w-sm justify-center gap-4">
+                <button 
+                  onClick={() => setStep('details')}
+                  className="w-full bg-[#adc6ff] hover:bg-[#4d8eff] text-[#002e6a] font-bold py-4 px-8 rounded-lg transition-all flex items-center justify-center gap-3 group active:scale-[0.98]"
+                >
+                  Create Account
+                  <span className="material-symbols-outlined group-hover:translate-x-1 transition-transform">arrow_forward</span>
+                </button>
+                <button 
+                  onClick={() => setStep('login')}
+                  className="w-full bg-transparent hover:bg-[#1c1b1d] border border-[#424754]/40 text-[#c2c6d6] hover:text-[#adc6ff] font-bold py-4 px-8 rounded-lg transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
+                >
+                  Already have an account? Log in
+                </button>
               </div>
 
               <div className="flex items-center gap-4 py-6 w-full">
@@ -220,7 +249,6 @@ export default function OnboardingFlow() {
                       <div className="h-1 w-12 bg-[#adc6ff] rounded-full mb-4"></div>
                       <p className="text-zinc-500 text-sm">Please fill the form below with your registered business information.</p>
                     </div>
-                    <ConnectButton showBalance={false} chainStatus="icon" />
                   </header>
 
                   {error && (
@@ -230,15 +258,6 @@ export default function OnboardingFlow() {
                   )}
 
                   <form onSubmit={handleDetailsSubmit} className="space-y-8">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold tracking-[0.05em] text-zinc-500 uppercase">Connected Wallet</label>
-                      <div className="relative">
-                        <div className="w-full bg-[#0e0e10] border-0 rounded-lg py-4 px-5 font-['JetBrains_Mono'] text-[#adc6ff] flex items-center justify-between text-sm overflow-hidden text-ellipsis">
-                          {address}
-                          <span className="material-symbols-outlined text-lg text-[#4edea3] ml-2">check_circle</span>
-                        </div>
-                      </div>
-                    </div>
 
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold tracking-[0.05em] text-zinc-500 uppercase">Full Name / Company Name</label>
@@ -327,6 +346,71 @@ export default function OnboardingFlow() {
                   <div className="text-[10px] text-zinc-600 uppercase font-bold tracking-widest mb-1">Region</div>
                   <div className="text-xs text-zinc-300 font-['JetBrains_Mono'] uppercase">LATAM_BR</div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      )}
+
+      {/* Step: Login */}
+      {step === 'login' && (
+        <main className="pt-24 pb-20 px-4 flex justify-center items-center flex-grow animate-in fade-in slide-in-from-bottom-4 duration-500 z-10">
+          <div className="max-w-md w-full">
+            <div className="bg-[#1c1b1d] rounded-xl p-8 shadow-2xl relative overflow-hidden group">
+              <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#adc6ff]/5 blur-[100px] rounded-full group-hover:bg-[#adc6ff]/10 transition-colors duration-500"></div>
+              
+              <div className="relative z-10">
+                <header className="mb-8 flex flex-col items-center text-center">
+                  <div className="w-16 h-16 bg-[#0e0e10] rounded-xl border border-[#424754]/20 flex items-center justify-center mb-6">
+                    <span className="material-symbols-outlined text-3xl text-[#adc6ff]">fingerprint</span>
+                  </div>
+                  <h2 className="text-2xl font-bold tracking-tight text-zinc-50 mb-2">Contractor Login</h2>
+                  <p className="text-zinc-500 text-sm">Enter your Brazilian Tax ID (CNPJ) to access your dashboard.</p>
+                </header>
+
+                {error && (
+                  <div className="mb-6 p-4 bg-[#93000a] text-[#ffdad6] rounded-lg text-sm border border-[#ffb4ab]/20">
+                    {error}
+                  </div>
+                )}
+
+                <form onSubmit={handleLoginSubmit} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold tracking-[0.05em] text-zinc-500 uppercase">Brazilian Tax ID (CNPJ)</label>
+                    <div className="relative">
+                      <input 
+                        required
+                        value={loginData.cnpj}
+                        onChange={(e) => setLoginData({ cnpj: e.target.value })}
+                        className="w-full bg-[#0e0e10] border border-[#424754]/20 focus:border-[#adc6ff]/50 focus:ring-1 focus:ring-[#adc6ff]/30 rounded-lg py-4 px-5 font-['JetBrains_Mono'] text-[#adc6ff] placeholder-zinc-700 transition-all outline-none" 
+                        placeholder="00.000.000/0001-00" 
+                        type="text"
+                      />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none">
+                        <span className="material-symbols-outlined text-lg">badge</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <button 
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full bg-[#adc6ff] hover:bg-[#4d8eff] text-[#002e6a] font-bold py-5 rounded-lg transition-all flex items-center justify-center gap-3 group active:scale-[0.98] disabled:opacity-50"
+                    >
+                      {isSubmitting ? 'Authenticating...' : 'Access Dashboard'}
+                      <span className="material-symbols-outlined group-hover:translate-x-1 transition-transform">login</span>
+                    </button>
+                    
+                    <button 
+                      type="button"
+                      onClick={() => setStep('details')}
+                      className="w-full mt-4 py-3 text-xs text-zinc-500 hover:text-zinc-300 transition-colors uppercase tracking-widest font-bold"
+                    >
+                      New contractor? Create an account
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           </div>

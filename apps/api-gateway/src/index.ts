@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import express from 'express';
 import { Client } from 'pg';
 import { ledgerClient } from './grpc';
+import { createSmartWalletForEntity } from './services/turnkey.service';
 
 dotenv.config({ path: '../../.env' });
 
@@ -30,7 +31,7 @@ function parseError(error: unknown): string {
 }
 
 function apiContext() {
-    return { db: dbClient, ledger: ledgerClient };
+    return { db: dbClient, ledger: ledgerClient, createSmartWallet: createSmartWalletForEntity };
 }
 
 function trpcHttpStatus(code: TRPCError['code']): number {
